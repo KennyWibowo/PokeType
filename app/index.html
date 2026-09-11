@@ -26,42 +26,22 @@
     <p class="tagline">How much damage does that move actually do? Pick a mode.</p>
 
     <h2 class="section-heading">Effectiveness</h2>
-    <div class="mode-grid">
-      <button class="mode-card" disabled data-mode="easy">
-        <span class="mode-rank rank-easy">Easy</span>
-        <span class="mode-name">Single type</span>
-        <span class="mode-blurb">One attacking type against one defending type.</span>
-      </button>
-      <button class="mode-card" disabled data-mode="medium">
-        <span class="mode-rank rank-medium">Medium</span>
-        <span class="mode-name">Dual type</span>
-        <span class="mode-blurb">Two defending types, so the multipliers stack.</span>
-      </button>
-      <button class="mode-card" disabled data-mode="hard">
-        <span class="mode-rank rank-hard">Hard</span>
-        <span class="mode-name">Name the damage</span>
-        <span class="mode-blurb">Only the Pokémon is shown — recall its typing first.</span>
-      </button>
-    </div>
+    <div id="modes-effect" class="mode-grid"></div>
 
     <h2 class="section-heading">Typing</h2>
-    <div class="mode-grid">
-      <button class="mode-card wide" disabled data-mode="typeid">
-        <span class="mode-rank rank-typeid">Type ID</span>
-        <span class="mode-name">What type is it?</span>
-        <span class="mode-blurb">A Pokémon appears; pick its one or two types.</span>
-      </button>
-    </div>
+    <div id="modes-typing" class="mode-grid"></div>
 
     <section class="settings">
       <h2 class="section-heading">Pokémon pool</h2>
-      <p class="settings-note">Applies to <strong>Hard</strong> and <strong>Type ID</strong>. Nothing selected means every generation.</p>
+      <p class="settings-note">Applies to <strong>Hard</strong>, <strong>Ultra</strong>, <strong>Master</strong> and <strong>Type ID</strong>. Nothing selected means every generation; moves are included up to the newest one you pick.</p>
       <div id="gen-filter" class="gen-filter"></div>
     </section>
   </section>
 
   <!-- ---------------------------------------------------------------- quiz -->
   <section id="quiz" class="screen" hidden>
+    <div id="mode-banner" class="mode-banner"></div>
+
     <div class="question card">
       <div id="subject" class="subject"></div>
       <p id="prompt" class="prompt"></p>

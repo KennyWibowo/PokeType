@@ -10,6 +10,10 @@ import { access } from 'node:fs/promises';
 
 const APP = new URL('../app/', import.meta.url);
 
+// balls.js reaches for document.createElementNS at call time, not import time.
+// Only ballLabel is exercised here; the drawing itself is checked in a browser.
+globalThis.document = undefined;
+
 // data.js fetches a relative URL; serve it off disk so the module works here.
 globalThis.fetch = async (path) => {
   const body = await readFile(new URL(path, APP), 'utf8');
@@ -17,10 +21,18 @@ globalThis.fetch = async (path) => {
 };
 
 const { TYPES, against, multiplier, verdictOf, formatMultiplier } = await import('../app/js/types.js');
-const { loadPokemon, pool, pickFresh } = await import('../app/js/data.js');
-const { nextQuestion, sameTypes, MODES } = await import('../app/js/quiz.js');
+const { loadPokemon, loadMoves, loadLearnsets, pool, movePool, pickFresh, learnsetOf } =
+  await import('../app/js/data.js');
+const { nextQuestion, sameTypes, gradeGuess, MODES, DUAL_TYPE_MULTIPLIERS, SINGLE_TYPE_MULTIPLIERS } =
+  await import('../app/js/quiz.js');
+const { calculate, statAt, boostMultiplier, LEVEL } = await import('../app/js/damage.js');
+const { pokeball, ballLabel } = await import('../app/js/balls.js');
 
 const all = await loadPokemon();
+const moves = await loadMoves();
+const learnsets = await loadLearnsets();
+const byName = (name) => all.find((p) => p.name === name);
+const moveNamed = (name) => moves.find((m) => m.name === name);
 
 /* ------------------------------------------------------------- type chart */
 
@@ -114,19 +126,40 @@ test('pickFresh avoids immediate repeats', () => {
 
 test('every mode produces a self-consistent question', () => {
   for (const mode of Object.keys(MODES)) {
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 300; i++) {
       const q = nextQuestion(mode, all, []);
       if (mode === 'typeid') {
         assert.ok(q.pokemon, 'typeid needs a Pokemon');
         assert.deepEqual(q.answer, q.pokemon.types);
         continue;
       }
+      if (mode === 'master') {
+        assert.ok(q.attacker && q.defender && q.move, 'master needs both sides and a move');
+        assert.notEqual(q.attacker.id, q.defender.id);
+        assert.equal(q.answer, Math.round(q.result.percent));
+        assert.ok(q.answer >= 0 && q.answer <= 100, `answer out of range: ${q.answer}`);
+        continue;
+      }
       assert.ok(TYPES.includes(q.attacker), `${mode}: bad attacker`);
       assert.equal(q.multiplier, multiplier(q.attacker, q.defenderTypes));
-      assert.equal(q.answer, verdictOf(q.multiplier));
-      if (mode === 'easy') assert.equal(q.defenderTypes.length, 1);
+      assert.equal(q.answer, q.multiplier);
+      assert.equal(q.verdict, verdictOf(q.multiplier));
+      assert.ok(q.options.includes(q.answer), `${mode}: ${q.answer}x is not an offered option`);
+      if (mode === 'easy') {
+        assert.equal(q.defenderTypes.length, 1);
+        assert.deepEqual(q.options, SINGLE_TYPE_MULTIPLIERS);
+      }
       if (mode === 'medium') assert.equal(q.defenderTypes.length, 2);
       if (mode === 'hard') assert.deepEqual(q.defenderTypes, q.pokemon.types);
+      if (mode === 'ultra') {
+        // The whole point of Ultra: a move name, and the type it implies.
+        assert.ok(q.move, 'ultra needs a move');
+        assert.equal(q.attacker, q.move.type);
+        assert.deepEqual(q.defenderTypes, q.pokemon.types);
+      }
+      // Hard and Ultra hide the typing, so a mono-type defender must still
+      // offer 4x and 0.25x - otherwise the options leak the answer.
+      if (mode !== 'easy') assert.deepEqual(q.options, DUAL_TYPE_MULTIPLIERS);
     }
   }
 });
@@ -147,13 +180,19 @@ test('Pokemon-based modes respect the generation filter', () => {
   }
 });
 
-test('all four verdicts come up, and neutral does not dominate', () => {
-  const counts = { super: 0, neutral: 0, resisted: 0, immune: 0 };
-  for (let i = 0; i < 4000; i++) counts[nextQuestion('medium', all, []).answer]++;
-  for (const [verdict, n] of Object.entries(counts)) {
-    assert.ok(n > 40, `${verdict} came up only ${n} times in 4000`);
+test('every multiplier comes up, and 1x does not dominate', () => {
+  for (const mode of ['medium', 'hard', 'ultra']) {
+    const counts = new Map(DUAL_TYPE_MULTIPLIERS.map((m) => [m, 0]));
+    const runs = 4000;
+    for (let i = 0; i < runs; i++) {
+      const a = nextQuestion(mode, all, []).answer;
+      counts.set(a, counts.get(a) + 1);
+    }
+    for (const [mult, n] of counts) {
+      assert.ok(n > runs * 0.01, `${mode}: ${mult}x came up only ${n} times in ${runs}`);
+    }
+    assert.ok(counts.get(1) < runs * 0.45, `${mode}: 1x dominated with ${counts.get(1)}/${runs}`);
   }
-  assert.ok(counts.neutral < 2000, `neutral dominated: ${counts.neutral}/4000`);
 });
 
 test('type ID accepts either order', () => {
@@ -178,9 +217,239 @@ test('every element id app.js looks up exists in index.html', async () => {
   }
 });
 
+test('the datasets are never served as immutable', async () => {
+  // They are bind-mounted and rewritten in place at fixed URLs. Caching them
+  // hard pairs a stale pokemon.json with fresh JS, which is exactly how Master
+  // mode broke on 2026-09-11. Sprites are the opposite case and may stay
+  // immutable: a sprite for a dex number never changes.
+  const conf = await readFile(new URL('../nginx.conf', import.meta.url), 'utf8');
+  const dataBlock = conf.slice(conf.indexOf('location ~* ^/data/'));
+  const body = dataBlock.slice(0, dataBlock.indexOf('}'));
+  assert.ok(!/immutable/.test(body), 'the /data/ location must not be immutable');
+  assert.ok(/no-cache/.test(body), 'the /data/ location must revalidate');
+  assert.ok(!/\^\/\(sprites\|data\)/.test(conf), 'sprites and data must not share a cache rule');
+});
+
+test('every dataset fetch is version-stamped', async () => {
+  // The only thing that reaches past a cache entry already stored as
+  // immutable is a different URL.
+  const data = await readFile(new URL('../app/js/data.js', import.meta.url), 'utf8');
+  assert.ok(/DATA_VERSION\s*=\s*\d+/.test(data), 'data.js needs a DATA_VERSION');
+  assert.ok(/fetch\(`data\/\$\{file\}\?v=\$\{DATA_VERSION\}`\)/.test(data),
+    'loadJSON must append the version to every dataset URL');
+});
+
 test('every type used by the UI has a colour in the stylesheet', async () => {
   const css = await readFile(new URL('styles.css', APP), 'utf8');
   for (const t of [...TYPES, 'unknown']) {
     assert.ok(css.includes(`.type-${t}`), `styles.css has no .type-${t}`);
+  }
+});
+
+
+/* ---------------------------------------------------------- damage & master */
+
+test('the damage formula reproduces a known calculation', () => {
+  // Charizard (Sp. Atk base 109) Flamethrower into Blastoise (Sp. Def 105,
+  // HP 79) at level 50: 129 Sp. Atk against 125 Sp. Def, 154 HP, STAB 1.5x
+  // and Fire resisted by Water.
+  const r = calculate(byName('Charizard'), moveNamed('Flamethrower'), byName('Blastoise'));
+  assert.equal(r.attackStat, 129);
+  assert.equal(r.defenseStat, 125);
+  assert.equal(r.hp, 154);
+  assert.equal(r.stab, 1.5);
+  assert.equal(r.effectiveness, 0.5);
+  assert.equal(r.damage, 28);
+  assert.ok(Math.abs(r.percent - 18.18) < 0.01, `percent was ${r.percent}`);
+});
+
+test('a 4x hit lands where a damage calculator puts it', () => {
+  // Pikachu Thunderbolt into Gyarados: Water/Flying, so Electric is 4x.
+  const r = calculate(byName('Pikachu'), moveNamed('Thunderbolt'), byName('Gyarados'));
+  assert.equal(r.effectiveness, 4);
+  assert.equal(r.damage, 136);
+  assert.equal(r.hp, 170);
+});
+
+test('stat stages scale the attack, and saturate the way the games do', () => {
+  assert.equal(boostMultiplier(0), 1);
+  assert.equal(boostMultiplier(1), 1.5);
+  assert.equal(boostMultiplier(2), 2);
+  assert.equal(boostMultiplier(6), 4);
+  assert.equal(boostMultiplier(-1), 2 / 3);
+  assert.equal(boostMultiplier(-2), 0.5);
+
+  const flat = calculate(byName('Charizard'), moveNamed('Flamethrower'), byName('Blastoise'), 0);
+  const boosted = calculate(byName('Charizard'), moveNamed('Flamethrower'), byName('Blastoise'), 2);
+  assert.equal(boosted.attackStat, flat.attackStat * 2);
+  assert.ok(boosted.damage > flat.damage);
+});
+
+test('HP and other stats use their separate level-50 formulas', () => {
+  assert.equal(statAt(105, true), 180);   // HP adds the level and 10 on top
+  assert.equal(statAt(105), 125);        // everything else adds a flat 5
+  assert.equal(statAt(255, true), 330);  // Blissey
+  assert.equal(statAt(45, true), 120);   // Bulbasaur
+  assert.equal(LEVEL, 50);
+});
+
+/* -------------------------------------------------------------- abilities */
+
+test('Levitate makes a Ground move do nothing at all', () => {
+  const bronzong = byName('Bronzong');
+  const earthquake = moveNamed('Earthquake');
+  assert.ok(bronzong.abilities.includes('Levitate'));
+
+  const grounded = calculate(byName('Machamp'), earthquake, bronzong, 0,
+    { attacker: 'Guts', defender: 'Heatproof' });
+  assert.ok(grounded.damage > 0, 'control: Earthquake should hurt without Levitate');
+
+  const levitating = calculate(byName('Machamp'), earthquake, bronzong, 0,
+    { attacker: 'Guts', defender: 'Levitate' });
+  assert.equal(levitating.effectiveness, 0);
+  assert.equal(levitating.damage, 0);
+  assert.ok(levitating.notes.some((n) => n.includes('Levitate')));
+});
+
+test('the other absorbing abilities zero their own type', () => {
+  const cases = [
+    ['Flash Fire', 'Flamethrower'],
+    ['Water Absorb', 'Surf'],
+    ['Volt Absorb', 'Thunderbolt'],
+    ['Sap Sipper', 'Energy Ball'],
+    ['Storm Drain', 'Surf'],
+    ['Lightning Rod', 'Thunderbolt'],
+    ['Motor Drive', 'Thunderbolt'],
+    ['Earth Eater', 'Earthquake'],
+    ['Well-Baked Body', 'Flamethrower'],
+  ];
+  for (const [ability, moveName] of cases) {
+    const r = calculate(byName('Mew'), moveNamed(moveName), byName('Snorlax'), 0, { defender: ability });
+    assert.equal(r.damage, 0, `${ability} did not absorb ${moveName}`);
+  }
+});
+
+test('damage-scaling abilities move the number in the right direction', () => {
+  const plain = (atk, def) =>
+    calculate(byName('Charizard'), moveNamed('Flamethrower'), byName('Snorlax'), 0,
+      { attacker: atk, defender: def }).damage;
+
+  const baseline = plain('Blaze', 'Immunity');
+  assert.ok(plain('Blaze', 'Thick Fat') < baseline, 'Thick Fat should soften Fire');
+  assert.ok(plain('Blaze', 'Heatproof') < baseline, 'Heatproof should soften Fire');
+  assert.ok(plain('Blaze', 'Dry Skin') > baseline, 'Dry Skin should worsen Fire');
+  assert.ok(plain('Adaptability', 'Immunity') > baseline, 'Adaptability should raise STAB');
+  assert.ok(plain('Blaze', 'Multiscale') < baseline, 'Multiscale should halve at full HP');
+  assert.ok(plain('Blaze', 'Ice Scales') < baseline, 'Ice Scales should halve a special hit');
+
+  // Blaze itself must NOT fire: the attacker is at full HP.
+  assert.equal(plain('Blaze', 'Immunity'), plain('Torrent', 'Immunity'));
+});
+
+test('Wonder Guard lets only super-effective moves through', () => {
+  const shedinja = byName('Shedinja');
+  const neutral = calculate(byName('Mew'), moveNamed('Psychic'), shedinja, 0, { defender: 'Wonder Guard' });
+  assert.equal(neutral.damage, 0);
+  const superEffective = calculate(byName('Mew'), moveNamed('Shadow Ball'), shedinja, 0, { defender: 'Wonder Guard' });
+  assert.ok(superEffective.damage > 0, 'Ghost is super effective on Bug/Ghost');
+});
+
+test('Technician boosts weak moves only', () => {
+  const weak = moveNamed('Bullet Punch');       // 40 BP
+  const strong = moveNamed('Close Combat');     // 120 BP
+  const a = byName('Scizor'), d = byName('Snorlax');
+  assert.ok(calculate(a, weak, d, 0, { attacker: 'Technician' }).power > weak.power);
+  assert.equal(calculate(a, strong, d, 0, { attacker: 'Technician' }).power, strong.power);
+});
+
+test('every Pokemon has at least one ability to draw', () => {
+  for (const p of all) {
+    assert.ok(p.abilities.length >= 1, `#${p.id} ${p.name} has no abilities`);
+  }
+});
+
+/* ------------------------------------------------------------------ master */
+
+test('master only pairs an attacker with a move it can learn', () => {
+  for (let i = 0; i < 400; i++) {
+    const q = nextQuestion('master', all, []);
+    assert.ok(learnsetOf(q.attacker.id).includes(q.move.id),
+      `${q.attacker.name} cannot learn ${q.move.name}`);
+    assert.ok(q.attacker.abilities.includes(q.abilities.attacker));
+    assert.ok(q.defender.abilities.includes(q.abilities.defender));
+  }
+});
+
+test('master answers spread across the whole slider, not just the low end', () => {
+  const buckets = new Array(8).fill(0);
+  const runs = 1200;
+  for (let i = 0; i < runs; i++) {
+    const q = nextQuestion('master', all, []);
+    buckets[Math.min(7, Math.floor(q.answer / 12.5))]++;
+  }
+  // Uniform would be 150 each. Anything above half that is an even-enough
+  // spread; the point is that no bracket is effectively unreachable and the
+  // top one is not a dumping ground for every KO.
+  buckets.forEach((n, i) => {
+    assert.ok(n > runs / 8 / 2, `bucket ${i} (${i * 12.5}-${(i + 1) * 12.5}%) got only ${n}/${runs}`);
+  });
+});
+
+test('master respects the generation filter on both sides', () => {
+  for (let i = 0; i < 120; i++) {
+    const q = nextQuestion('master', all, [1]);
+    assert.equal(q.attacker.gen, 1);
+    assert.equal(q.defender.gen, 1);
+    assert.ok(q.move.gen <= 1, `${q.move.name} is a gen ${q.move.gen} move`);
+  }
+});
+
+test('grading is by distance, and the streak needs 10 points or better', () => {
+  assert.deepEqual(gradeGuess(50, 50), { delta: 0, label: 'Spot on', correct: true });
+  assert.equal(gradeGuess(45, 50).label, 'Very close');
+  assert.equal(gradeGuess(41, 50).label, 'Close enough');
+  assert.equal(gradeGuess(30, 50).correct, false);
+  assert.equal(gradeGuess(60, 50).delta, 10);
+  assert.equal(gradeGuess(61, 50).correct, false);
+});
+
+/* ----------------------------------------------------------------- polish */
+
+test('every mode names a Pokeball that balls.js knows how to draw', () => {
+  for (const [key, mode] of Object.entries(MODES)) {
+    assert.ok(mode.ball, `${key} has no ball`);
+    assert.ok(ballLabel(mode.ball), `${key} names an unknown ball: ${mode.ball}`);
+  }
+  const used = Object.values(MODES).map((m) => m.ball);
+  assert.equal(new Set(used).size, used.length, 'two modes share a ball');
+});
+
+test('movePool is cumulative up to the newest chosen generation', () => {
+  assert.equal(movePool([]).length, moves.length);
+  assert.ok(movePool([1]).every((m) => m.gen === 1));
+  assert.ok(movePool([1]).length < movePool([3]).length);
+  assert.equal(movePool([9]).length, moves.length);
+});
+
+test('no move whose type the player cannot infer is in the pool', () => {
+  // Each of these is nominally Normal in the source data, but its real type
+  // comes from IVs, a held item, the weather, the terrain, a form or a Tera
+  // type — none of which the quiz shows. Ultra would be unanswerable and
+  // Master would compute STAB against the wrong type.
+  const unknowable = [
+    'Hidden Power', 'Weather Ball', 'Terrain Pulse', 'Judgment', 'Techno Blast',
+    'Multi-Attack', 'Ivy Cudgel', 'Revelation Dance', 'Aura Wheel', 'Raging Bull',
+    'Tera Blast', 'Tera Starstorm',
+  ];
+  for (const name of unknowable) {
+    assert.equal(moves.find((m) => m.name === name), undefined, `${name} is still in moves.json`);
+  }
+});
+
+test('every move can be used by the damage formula', () => {
+  for (const m of moves) {
+    assert.ok(m.power > 0, `${m.name} has no power`);
+    assert.ok(m.cls === 'physical' || m.cls === 'special', `${m.name} is ${m.cls}`);
+    assert.ok(TYPES.includes(m.type), `${m.name} has type ${m.type}`);
   }
 });

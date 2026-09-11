@@ -117,6 +117,16 @@ a { color: var(--accent); }
 /* -------------------------------------------------------------------- home */
 .tagline { color: var(--muted); text-align: center; margin: 6px 0 26px; }
 
+.load-error {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius);
+  background: rgba(240, 85, 106, 0.12);
+  color: var(--text);
+  text-align: center;
+}
+
 .section-heading {
   margin: 26px 0 10px;
   font-size: 0.75rem;
@@ -144,20 +154,37 @@ a { color: var(--accent); }
 .mode-card:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--line-strong); }
 .mode-card:disabled { opacity: 0.45; }
 
+.mode-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+}
+.pokeball { flex: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4)); }
+
 .mode-rank {
-  justify-self: start;
   padding: 2px 9px;
-  margin-bottom: 4px;
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.rank-easy   { background: #2f6f3e; color: #d8ffe2; }
-.rank-medium { background: #7a5a12; color: #ffeec4; }
-.rank-hard   { background: #7b2733; color: #ffd9df; }
-.rank-typeid { background: #2b4d7a; color: #d7e8ff; }
+/* Each badge picks up its ball's colour, so the two read as one label. */
+.rank-easy   { background: #4a5220; color: #e8edc8; }
+.rank-medium { background: #7b2029; color: #ffd9dd; }
+.rank-hard   { background: #1f4a86; color: #d7e8ff; }
+.rank-ultra  { background: #6a5411; color: #ffeec4; }
+.rank-master { background: #4b2b78; color: #ecd9ff; }
+.rank-typeid { background: #333847; color: #d8dcea; }
+
+.mode-card.loading { opacity: 0.6; }
+.mode-card.loading .mode-name::after {
+  content: ' — loading…';
+  font-weight: 400;
+  color: var(--muted);
+}
+.mode-card.failed { border-color: var(--bad); }
 
 .mode-name { font-size: 1.08rem; font-weight: 650; }
 .mode-blurb { font-size: 0.88rem; color: var(--muted); }
@@ -182,6 +209,19 @@ a { color: var(--accent); }
 .gen-chip.on strong { color: var(--accent-ink); }
 
 /* -------------------------------------------------------------------- quiz */
+.mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -244,7 +284,21 @@ a { color: var(--accent); }
 /* ----------------------------------------------------------------- answers */
 .answers { display: grid; gap: 10px; }
 
-.verdicts { grid-template-columns: 1fr; }
+.multipliers { grid-template-columns: 1fr 1fr; }
+
+.answer-mult {
+  font-size: 1.15rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.9em;
+}
+.answer-verdict {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+.answer-btn.correct .answer-verdict,
+.answer-btn.wrong .answer-verdict { color: inherit; opacity: 0.8; }
 
 .answer-btn {
   display: flex;
@@ -265,6 +319,8 @@ a { color: var(--accent); }
 .verdict-neutral  { --edge: #7d8598; }
 .verdict-resisted { --edge: #d29922; }
 .verdict-immune   { --edge: #f0556a; }
+
+.reveal-arrow { align-self: center; color: var(--muted); font-size: 1.1rem; }
 
 .key-hint {
   display: inline-grid;
@@ -325,6 +381,116 @@ a { color: var(--accent); }
 .primary-btn:disabled { background: var(--surface-2); color: var(--muted); }
 .primary-btn .key-hint { margin-left: 8px; border-color: rgba(0, 0, 0, 0.3); color: inherit; }
 
+/* ---------------------------------------------------------- master matchup */
+.matchup {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pokemon.small img { width: 104px; height: 104px; }
+.pokemon.small figcaption { font-size: 0.98rem; }
+.pokemon.small .dex { display: none; }
+
+.pokemon-notes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.pokemon-note {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.matchup-move {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 0 4px;
+}
+.matchup-arrow { color: var(--muted); font-size: 0.85rem; }
+.move-meta { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+
+.move-name {
+  padding: 2px 10px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.assumptions {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.slider-panel { gap: 14px; justify-items: stretch; }
+
+/* Two stacked bars rather than one overlaid pair: superimposing the guess on
+   the answer made both read as the same fill at a glance. */
+.hp-bars {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px 10px;
+}
+.bar-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.hp-track {
+  height: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.hp-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px 0 0 999px;
+}
+.hp-guess { background: var(--accent); }
+.hp-actual { width: 0; background: var(--good); transition: width 0.3s ease; }
+.hp-actual.over { background: var(--bad); border-radius: 999px; }
+
+.slider-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.slider-value { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.slider-hp { font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.hp-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: grab;
+}
+.hp-slider:disabled { cursor: default; opacity: 0.5; }
+.slider-panel.answered .hp-guess { opacity: 0.7; }
+
 /* ------------------------------------------------------------------ result */
 .result {
   margin-top: 16px;
@@ -342,6 +508,7 @@ a { color: var(--accent); }
 .result-detail {
   margin: 0;
   font-size: 0.9rem;
+  line-height: 1.5;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -364,11 +531,19 @@ a { color: var(--accent); }
 /* ------------------------------------------------------------ wider screens */
 @media (min-width: 560px) {
   .mode-grid { grid-template-columns: repeat(3, 1fr); }
-  .mode-card.wide { grid-column: 1 / -1; }
-  .verdicts { grid-template-columns: 1fr 1fr; }
+  .multipliers.count-6 { grid-template-columns: repeat(3, 1fr); }
   .type-grid { grid-template-columns: repeat(6, 1fr); }
   .gen-filter { grid-template-columns: repeat(9, 1fr); }
   .result .primary-btn { justify-self: start; }
+  .pokemon.small img { width: 120px; height: 120px; }
+  /* Left-to-right already says which way the attack goes. */
+  .matchup-arrow { display: none; }
+}
+
+/* Three sprites plus a move name do not fit a phone in one row. */
+@media (max-width: 559px) {
+  .matchup { grid-template-columns: 1fr; gap: 10px; }
+  .matchup-arrow { transform: rotate(90deg); display: inline-block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
