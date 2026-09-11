@@ -50,8 +50,17 @@ neutral, which teaches very little. `quiz.js` picks a *verdict* first and then
 an attacking type that produces it, so resistances and immunities come up often
 enough to be worth learning.
 
-Deployment, the data pipeline and the test command are in
-[`VERSION.md`](./VERSION.md).
+## Running it
+
+```bash
+docker compose up -d          # nginx serving app/ on the traefik proxy network
+docker compose run --rm test  # 17 logic tests, in node:22-alpine
+python3 tools/build-dataset.py --sprites   # rebuild the Pokémon data
+```
+
+Deployment specifics — the reverse proxy wiring, TLS, DNS and the host it runs
+on — are deliberately kept out of this repo; they live with the infrastructure
+that owns them.
 
 ## License
 
