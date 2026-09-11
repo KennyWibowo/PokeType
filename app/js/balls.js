@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Poké Ball icons, one per difficulty. Inline SVG rather than images: they are
 // two flat colours and a band, they inherit the page's ink, and they stay sharp
 // at the 20px the topbar uses and the 30px the mode cards use.

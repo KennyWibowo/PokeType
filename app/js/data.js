@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Pokemon, moves and learnsets: baked from the PokeAPI CSV data at build time
 // by tools/build-dataset.py.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The Gen 6+ type chart, written as the exceptions only: anything an attacking
 // type is not listed against deals neutral (1x) damage to it.
 export const TYPES = [

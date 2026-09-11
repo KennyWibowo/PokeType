@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // The Gen V+ damage formula, enough of it to grade a guess.
 //
 // Deliberately fixed so that one question has one answer: level 50, 31 IVs,

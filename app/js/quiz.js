@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { TYPES, multiplier, verdictOf } from './types.js';
 import { pool, movePool, attackerPool, moveById, learnsetOf, pickFresh, randomOf } from './data.js';
 import { calculate } from './damage.js';

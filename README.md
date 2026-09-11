@@ -40,6 +40,11 @@ A full damage calculation, answered on a slider: how much of the defender's HP
 does this take? You are graded on how close you get — within 3 points is *spot
 on*, within 10 keeps the streak alive.
 
+The move's **base power is not shown** — knowing that Thunderbolt is 90 is part
+of the question at this rung. The damage class is, because which defence applies
+is a separate thing to know. Both appear in the breakdown afterwards, alongside
+the stats, STAB and type multiplier, so the arithmetic can be traced back.
+
 The attacker only ever uses a move it can actually learn, and both sides show
 one of their real abilities, which the calculation respects: **Levitate really
 does zero an Earthquake**, Thick Fat really does soften a Fire move, Wonder
@@ -106,7 +111,23 @@ that owns them.
 
 ## License
 
-The code is MIT — see [`LICENSE`](./LICENSE).
+Copyright © 2026 Kenny Wibowo.
+
+PokéType is free software: you can redistribute it and/or modify it under the
+terms of the **GNU Affero General Public License** as published by the Free
+Software Foundation, either version 3 of the License or (at your option) any
+later version — the full text is in [`LICENSE`](./LICENSE). It is distributed in
+the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. Source
+files carry an `SPDX-License-Identifier: AGPL-3.0-or-later` line to say so per
+file.
+
+The Affero clause is the point for something that lives on the web: section 13
+extends the obligation to people who only ever *use* a hosted copy over a
+network, not just to those who receive the code. Anyone running a modified
+PokéType as a service has to offer its users that modified source. The footer
+links back to this repository, so the deployment at `poketype.wibow.io` meets
+that itself.
 
 That covers the code only. `app/sprites/` and `app/data/pokemon.json` are
 Pokémon sprites and species data sourced from [PokéAPI](https://pokeapi.co);

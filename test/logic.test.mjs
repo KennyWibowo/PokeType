@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Runs on node:22-alpine with no dependencies:
 //   docker compose run --rm test
 // Covers the type chart, the dataset, and the question generator. The DOM
@@ -215,6 +216,41 @@ test('every element id app.js looks up exists in index.html', async () => {
     if (id === 'check') continue;
     assert.ok(ids.has(id), `app.js reads #${id}, which index.html does not define`);
   }
+});
+
+test('Master asks without showing the base power, and reveals it after', async () => {
+  const js = await readFile(new URL('../app/js/app.js', import.meta.url), 'utf8');
+  const meta = js.split('\n').find((line) => line.includes('class="move-meta"'));
+  assert.ok(meta, 'expected a move-meta line in askMaster');
+  assert.ok(!/BP/.test(meta), 'the Master question must not print the move\'s base power');
+  // It still has to appear in the explanation, or the arithmetic cannot be
+  // followed back from the answer.
+  const detail = js.slice(js.indexOf('function answerSlider'));
+  assert.ok(/BP`/.test(detail), 'the result breakdown must still show the base power');
+});
+
+test('every source file carries the licence it is actually under', async () => {
+  const expected = 'SPDX-License-Identifier: AGPL-3.0-or-later';
+  const files = [
+    'app/index.html', 'app/styles.css', 'nginx.conf', 'tools/build-dataset.py',
+    'app/js/app.js', 'app/js/types.js', 'app/js/data.js', 'app/js/quiz.js',
+    'app/js/damage.js', 'app/js/balls.js',
+  ];
+  for (const file of files) {
+    const text = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+    assert.ok(text.includes(expected), `${file} is missing its SPDX line`);
+  }
+  const licence = await readFile(new URL('../LICENSE', import.meta.url), 'utf8');
+  assert.ok(licence.includes('GNU AFFERO GENERAL PUBLIC LICENSE'),
+    'LICENSE must be the AGPL text the SPDX lines claim');
+});
+
+test('the running app offers its source, as AGPL section 13 requires', async () => {
+  // The obligation this licence adds over the GPL only bites for a hosted
+  // copy, so it has to be discharged by the page itself, not just the repo.
+  const html = await readFile(new URL('../app/index.html', import.meta.url), 'utf8');
+  assert.match(html, /<footer[\s\S]*github\.com\/KennyWibowo\/PokeType[\s\S]*<\/footer>/,
+    'the footer must link to the source');
 });
 
 test('the datasets are never served as immutable', async () => {

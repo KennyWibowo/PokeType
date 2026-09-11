@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 import { TYPES, VERDICT_LABEL, against, formatMultiplier, verdictOf } from './types.js';
 import { loadPokemon, loadMoves, loadLearnsets, spriteUrl, GENERATIONS } from './data.js';
 import { MODES, nextQuestion, sameTypes, gradeGuess } from './quiz.js';
@@ -323,7 +324,10 @@ function askMaster(q) {
   const middle = document.createElement('div');
   middle.className = 'matchup-move';
   middle.innerHTML = `<span class="move-name">${q.move.name}</span>`
-    + `<span class="move-meta">${q.move.power} BP · ${q.move.cls === 'physical' ? 'Physical' : 'Special'}</span>`
+    // The move's base power is deliberately absent: recalling it is part of
+    // the question at this rung. The damage class stays, because which defence
+    // applies is a separate thing to know. Both are revealed in the breakdown.
+    + `<span class="move-meta">${q.move.cls === 'physical' ? 'Physical' : 'Special'}</span>`
     + '<span class="matchup-arrow" aria-hidden="true">▶</span>';
   matchup.append(middle);
 

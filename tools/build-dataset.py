@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Rebuild app/data/*.json and app/sprites/ from PokeAPI.
 
 All of it is checked in, so this only needs running when a new generation lands.
