@@ -1,0 +1,46 @@
+services:
+  poketype:
+    image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+    container_name: poketype
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - TZ=America/Los_Angeles
+    networks:
+      - proxy
+    volumes:
+      # The app is plain ES modules + static assets, so there is no build step:
+      # nginx serves the working tree read-only and an edit is live on reload.
+      - /home/owo/poketype/app:/usr/share/nginx/html:ro
+      - /home/owo/poketype/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    # No host port published: traefik reaches :80 over the proxy network.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.poketype.entrypoints=http"
+      - "traefik.http.routers.poketype.rule=Host(`poketype.wibow.io`)"
+      - "traefik.http.middlewares.poketype-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.poketype.middlewares=poketype-https-redirect"
+      - "traefik.http.routers.poketype-secure.entrypoints=https"
+      - "traefik.http.routers.poketype-secure.rule=Host(`poketype.wibow.io`)"
+      - "traefik.http.routers.poketype-secure.middlewares=default-headers@file"
+      # No certresolver: the traefik router already holds the *.wibow.io
+      # wildcard from the cloudflare resolver, and this matches it from the store.
+      - "traefik.http.routers.poketype-secure.tls=true"
+      - "traefik.http.routers.poketype-secure.service=poketype"
+      - "traefik.http.services.poketype.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
+
+  # Logic tests. Never started by "up -d" - run them explicitly:
+  #   docker compose run --rm test
+  test:
+    image: node:22-alpine
+    profiles: [test]
+    working_dir: /work
+    volumes:
+      - /home/owo/poketype:/work:ro
+    command: ["node", "--test", "test/*.test.mjs"]
+
+networks:
+  proxy:
+    external: true
