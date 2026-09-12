@@ -10,7 +10,7 @@
 // everything above — see ABILITIES below for why that line is drawn where it
 // is. Anything else is a no-op, which is the honest answer when the quiz does
 // not model the condition the ability depends on.
-import { multiplier } from './types.js';
+import { TYPES, multiplier } from './types.js';
 
 export const LEVEL = 50;
 export const AVERAGE_ROLL = 0.925;   // mean of the 0.85 - 1.00 damage roll
@@ -70,6 +70,9 @@ const DEFENDER_TYPE_FILTERS = {
   'purifying salt': { ghost: 0.5 },
   'dry skin': { fire: 1.25 },
 };
+
+// Defender abilities that blunt a super-effective hit, whatever its type.
+const SUPER_BLUNTERS = ['filter', 'solid rock', 'prism armor'];
 
 // Attacker abilities that scale the power of particular move types.
 const ATTACKER_TYPE_BOOSTS = {
@@ -197,7 +200,7 @@ function finalModifiers({ atkAbility, defAbility, abilities, move, effectiveness
     out.push([filter, `${abilities.defender} ${filter < 1 ? 'softens' : 'worsens'} ${cap(move.type)} damage`]);
   }
   if (effectiveness > 1) {
-    if (['filter', 'solid rock', 'prism armor'].includes(defAbility)) {
+    if (SUPER_BLUNTERS.includes(defAbility)) {
       out.push([0.75, `${abilities.defender} blunts super-effective hits`]);
     }
     if (atkAbility === 'neuroforce') {
@@ -218,4 +221,62 @@ function finalModifiers({ atkAbility, defAbility, abilities, move, effectiveness
     out.push([0.5, 'Ice Scales halves special damage']);
   }
   return out;
+}
+
+/* ------------------------------------------------------- defensive spreads */
+
+/**
+ * What every attacking type does to one Pokémon: the type chart, bent by the
+ * one ability it is holding. The same rules `calculate` applies, read off a
+ * type at a time instead of a move — an absorbed type is zero, Wonder Guard
+ * zeroes everything it does not have to let through, a type filter scales its
+ * own type, and the blunting abilities only touch what the chart made super
+ * effective.
+ *
+ * Only an ability that keys on the *attacking type* can show up in a spread
+ * like this. Fur Coat and Ice Scales key on the move's damage class, and
+ * Multiscale halves every type alike; none of the three change what a spread
+ * says about any one type, so a Pokémon holding one still reads as the chart
+ * says it should. That is not a gap — it is the same answer a calculator gives
+ * when all it is told is the attacking type.
+ */
+export function defensiveProfile(pokemon, ability = null) {
+  const name = lower(ability);
+  const filters = DEFENDER_TYPE_FILTERS[name];
+  const blunts = SUPER_BLUNTERS.includes(name);
+  const profile = {};
+
+  for (const type of TYPES) {
+    const chart = multiplier(type, pokemon.types);
+    let mult = chart;
+    if (ABSORBS[name] === type) {
+      mult = 0;
+    } else if (name === 'wonder guard' && chart <= 1) {
+      mult = 0;
+    } else if (chart > 0) {
+      if (filters?.[type]) mult *= filters[type];
+      if (chart > 1 && blunts) mult *= 0.75;
+    }
+    profile[type] = mult;
+  }
+  return profile;
+}
+
+/** Two spreads are the same question if these match. */
+export function profileKey(profile) {
+  return TYPES.map((t) => profile[t]).join('|');
+}
+
+/** The abilities of `pokemon` that move its spread off the chart's own. */
+export function profileAbilities(pokemon) {
+  const plain = profileKey(defensiveProfile(pokemon));
+  return (pokemon.abilities ?? [])
+    .filter((a) => profileKey(defensiveProfile(pokemon, a)) !== plain);
+}
+
+/** Whether `pokemon` could show this spread under any ability it can have. */
+export function couldShowProfile(pokemon, key) {
+  if (profileKey(defensiveProfile(pokemon)) === key) return true;
+  return (pokemon.abilities ?? [])
+    .some((a) => profileKey(defensiveProfile(pokemon, a)) === key);
 }

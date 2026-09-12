@@ -3,7 +3,7 @@ import { TYPES, VERDICT_LABEL, against, formatMultiplier, verdictOf } from './ty
 import { loadPokemon, loadMoves, loadLearnsets, spriteUrl, GENERATIONS } from './data.js';
 import { MODES, nextQuestion, sameTypes, gradeGuess } from './quiz.js';
 import { pokeball } from './balls.js';
-import { boostLabel, LEVEL, AVERAGE_ROLL } from './damage.js';
+import { boostLabel, defensiveProfile, LEVEL, AVERAGE_ROLL } from './damage.js';
 
 const BEST_KEY = 'poketype.best';
 const GENS_KEY = 'poketype.gens';
@@ -223,9 +223,11 @@ function ask() {
   dom.result.hidden = true;
   clear(dom.subject);
   clear(dom.defender);
+  dom.defender.className = 'defender';   // Dex ID swaps it for a spread
 
   const q = state.question;
   if (q.mode === 'master') return askMaster(q);
+  if (q.mode === 'dexid') return askDexid(q);
 
   if (q.pokemon) dom.subject.append(pokemonFigure(q.pokemon));
 
@@ -428,6 +430,119 @@ function answerSlider() {
   });
 }
 
+/* ------------------------------------------------------------------ dex ID */
+
+// The heading for each row of the spread. A value the chart alone cannot reach
+// falls back to its side of neutral: an ability has bent it, and the exact
+// multiplier is printed beside the heading anyway.
+const SPREAD_LABELS = new Map([
+  [4, 'Doubly weak against'],
+  [2, 'Weak against'],
+  [1, 'Normal damage'],
+  [0.5, 'Resistant to'],
+  [0.25, 'Very resistant to'],
+  [0, 'Immune'],
+]);
+
+function spreadLabel(mult) {
+  return SPREAD_LABELS.get(mult) ?? (mult > 1 ? 'Weak against' : 'Resistant to');
+}
+
+/** The whole defensive spread, one row per multiplier, strongest first. */
+function spreadTable(profile) {
+  const table = document.createElement('div');
+  table.className = 'spread';
+
+  const rows = new Map();
+  for (const type of TYPES) {
+    if (!rows.has(profile[type])) rows.set(profile[type], []);
+    rows.get(profile[type]).push(type);
+  }
+
+  for (const mult of [...rows.keys()].sort((a, b) => b - a)) {
+    const row = document.createElement('div');
+    row.className = `spread-row verdict-${verdictOf(mult)}`;
+    const label = document.createElement('span');
+    label.className = 'spread-label';
+    label.innerHTML = `${spreadLabel(mult)} <em>${formatMultiplier(mult)}</em>`;
+    const chips = document.createElement('span');
+    chips.className = 'spread-types';
+    for (const type of rows.get(mult)) chips.append(typeChip(type));
+    row.append(label, chips);
+    table.append(row);
+  }
+  return table;
+}
+
+function askDexid(q) {
+  dom.prompt.innerHTML = 'Which Pokémon has this type effectiveness?'
+    // Saying an ability may be in play is the fair half of hiding which one:
+    // without the warning, a row the chart cannot explain looks like a bug.
+    + '<span class="assumptions">an ability may be bending the chart —'
+    + ' only one of the four can produce this spread</span>';
+  dom.defender.className = 'defender spread-panel';
+  dom.defender.append(spreadTable(q.profile));
+  renderPokemonOptions(q.options);
+}
+
+function renderPokemonOptions(options) {
+  clear(dom.answers);
+  dom.answers.className = 'answers pokemon-options';
+  options.forEach((pokemon, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'answer-btn pokemon-option';
+    btn.dataset.pokemon = String(pokemon.id);
+
+    const hint = document.createElement('span');
+    hint.className = 'key-hint';
+    hint.textContent = String(i + 1);
+    const img = document.createElement('img');
+    img.src = spriteUrl(pokemon.id);
+    img.alt = '';            // the name is right underneath it
+    img.width = 96;
+    img.height = 96;
+    const name = document.createElement('span');
+    name.className = 'option-name';
+    name.textContent = pokemon.name;
+
+    btn.append(hint, img, name);
+    btn.addEventListener('click', () => answerPokemon(pokemon));
+    dom.answers.append(btn);
+  });
+}
+
+/** Which rows the ability moved, so the odd multiplier explains itself. */
+function abilityEffect(q) {
+  const chart = defensiveProfile(q.pokemon);
+  const moved = TYPES
+    .filter((t) => chart[t] !== q.profile[t])
+    .map((t) => `${cap(t)} ${formatMultiplier(chart[t])} → ${formatMultiplier(q.profile[t])}`);
+  // Wonder Guard moves thirteen rows at once; listing them all would bury the
+  // one thing worth reading, which is that the ability did it.
+  return moved.length > 3 ? `${moved.length} of the 18 rows move` : moved.join(', ');
+}
+
+function answerPokemon(chosen) {
+  if (state.answered) return;
+  const q = state.question;
+  const correct = chosen.id === q.answer;
+  scoreAnswer(correct);
+
+  for (const btn of dom.answers.querySelectorAll('[data-pokemon]')) {
+    btn.disabled = true;
+    const id = Number(btn.dataset.pokemon);
+    if (id === q.answer) btn.classList.add('correct');
+    else if (id === chosen.id) btn.classList.add('wrong');
+    else btn.classList.add('faded');
+  }
+
+  const typing = q.pokemon.types.map(cap).join(' / ');
+  showResult(correct, q.ability
+    ? `${q.pokemon.name} is ${typing}, and ${q.ability} does the rest — ${abilityEffect(q)}.`
+    : `${q.pokemon.name} is ${typing}, and that alone is the whole spread.`,
+  { headline: `${q.pokemon.name} — ${typing}` });
+}
+
 /* ----------------------------------------------------------------- scoring */
 
 function scoreAnswer(correct) {
@@ -537,6 +652,12 @@ document.addEventListener('keydown', (event) => {
       event.preventDefault();
       answerSlider();
     }
+    return;
+  }
+  if (state.question.mode === 'dexid') {
+    const pick = Number(event.key) - 1;
+    const options = state.question.options;
+    if (pick >= 0 && pick < options.length) answerPokemon(options[pick]);
     return;
   }
   if (state.question.mode === 'typeid') return;

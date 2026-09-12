@@ -178,6 +178,7 @@ a { color: var(--accent); }
 .rank-ultra  { background: #6a5411; color: #ffeec4; }
 .rank-master { background: #4b2b78; color: #ecd9ff; }
 .rank-typeid { background: #333847; color: #d8dcea; }
+.rank-dexid  { background: #7a3a17; color: #ffdfc6; }
 
 .mode-card.loading { opacity: 0.6; }
 .mode-card.loading .mode-name::after {
@@ -382,6 +383,63 @@ a { color: var(--accent); }
 .primary-btn:disabled { background: var(--surface-2); color: var(--muted); }
 .primary-btn .key-hint { margin-left: 8px; border-color: rgba(0, 0, 0, 0.3); color: inherit; }
 
+/* ------------------------------------------------------ dex ID: the spread */
+/* The spread replaces the row of type chips under the prompt, so it takes the
+   same slot and the same centring the other modes use. */
+.defender.spread-panel { display: block; }
+
+.spread { display: grid; gap: 10px; }
+
+.spread-row {
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+}
+
+.spread-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.spread-label em {
+  font-style: normal;
+  /* --edge comes off the row's .verdict-* class, so the multiplier is the one
+     coloured thing in the heading. */
+  color: var(--edge, var(--text));
+  font-variant-numeric: tabular-nums;
+}
+
+.spread-types {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+}
+.spread-types .type-chip { padding: 4px 11px; font-size: 0.74rem; }
+
+/* ----------------------------------------------------- dex ID: the answers */
+.pokemon-options { grid-template-columns: 1fr 1fr; }
+
+.pokemon-option {
+  position: relative;
+  flex-direction: column;   /* .answer-btn is a row; these stack */
+  align-items: center;
+  gap: 2px;
+  padding: 14px 10px 12px;
+  text-align: center;
+}
+.pokemon-option img {
+  width: 88px;
+  height: 88px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+}
+.pokemon-option .key-hint { position: absolute; top: 8px; left: 8px; }
+.option-name { font-size: 0.95rem; font-weight: 700; }
+.pokemon-option.faded { opacity: 0.3; }
+
 /* ---------------------------------------------------------- master matchup */
 .matchup {
   display: grid;
@@ -534,6 +592,7 @@ a { color: var(--accent); }
   .mode-grid { grid-template-columns: repeat(3, 1fr); }
   .multipliers.count-6 { grid-template-columns: repeat(3, 1fr); }
   .type-grid { grid-template-columns: repeat(6, 1fr); }
+  .pokemon-options { grid-template-columns: repeat(4, 1fr); }
   .gen-filter { grid-template-columns: repeat(9, 1fr); }
   .result .primary-btn { justify-self: start; }
   .pokemon.small img { width: 120px; height: 120px; }

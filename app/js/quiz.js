@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { TYPES, multiplier, verdictOf } from './types.js';
 import { pool, movePool, attackerPool, moveById, learnsetOf, pickFresh, randomOf } from './data.js';
-import { calculate } from './damage.js';
+import {
+  calculate, defensiveProfile, profileKey, profileAbilities, couldShowProfile,
+} from './damage.js';
 
 // `ball` names the icon in balls.js; `needs` lists the lazily-fetched datasets
 // the mode cannot start without; `answers` selects the input the UI renders.
@@ -35,6 +37,11 @@ export const MODES = {
     title: 'Type ID', ball: 'premier', answers: 'types', needs: [], group: 'typing',
     name: 'What type is it?',
     blurb: 'A Pokémon appears; pick its one or two types.',
+  },
+  dexid: {
+    title: 'Dex ID', ball: 'timer', answers: 'pokemon', needs: [], group: 'typing',
+    name: 'Which Pokémon is it?',
+    blurb: 'A whole defensive spread — weaknesses, resistances, immunities, abilities included.',
   },
 };
 
@@ -98,7 +105,7 @@ function realDualTypings(all) {
   return dualTypings;
 }
 
-const recent = { easy: [], medium: [], hard: [], ultra: [], master: [], typeid: [] };
+const recent = { easy: [], medium: [], hard: [], ultra: [], master: [], typeid: [], dexid: [] };
 
 /* ------------------------------------------------------------------ master */
 
@@ -169,6 +176,100 @@ function masterQuestion(gens) {
   return fallback;
 }
 
+/* ------------------------------------------------------------------ dex ID */
+
+export const DEXID_OPTIONS = 4;
+
+// How often the spread on screen has been bent by an ability rather than being
+// the chart's own. Rare enough that the chart stays the thing being drilled;
+// often enough that a Ground immunity on something that is not Flying has to be
+// explained rather than dismissed as a bug.
+const ABILITY_CHANCE = 0.3;
+
+/** Fisher-Yates, so the answer is not always in the same slot. */
+function shuffle(list) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Three Pokémon that could not be showing this spread — checked against every
+ * ability each of them can have, not just the chart, because the ability in
+ * play is not shown. Without that, a spread with Ground at 0x could equally be
+ * the Flying type sat next to it or the Levitate one, and the question would
+ * have two right answers.
+ *
+ * Typings that overlap the answer's are preferred: four unrelated Pokémon turn
+ * this into a recognition test, where three near misses make it a chart one. One
+ * that shares *both* types is normally rejected by the check above, since it
+ * produces the same spread - but when an ability has bent the answer's, it is
+ * rejected only if it could hold an ability that bends its own the same way.
+ */
+function pickDistractors(target, key, candidates) {
+  const related = candidates.filter((p) => p.types.some((t) => target.types.includes(t)));
+  const chosen = [];
+  const taken = new Set([target.id]);
+
+  for (const list of [related, candidates]) {
+    for (let attempt = 0; attempt < 300 && chosen.length < DEXID_OPTIONS - 1; attempt++) {
+      const p = randomOf(list);
+      if (!p || taken.has(p.id) || couldShowProfile(p, key)) continue;
+      taken.add(p.id);
+      chosen.push(p);
+    }
+    if (chosen.length === DEXID_OPTIONS - 1) break;
+  }
+  return chosen;
+}
+
+// profileAbilities walks the chart once per ability, and the sampler below asks
+// about the same 1025 species on every question. Memoise it by dex number.
+const benderCache = new Map();
+
+function bendersOf(pokemon) {
+  if (!benderCache.has(pokemon.id)) benderCache.set(pokemon.id, profileAbilities(pokemon));
+  return benderCache.get(pokemon.id);
+}
+
+/**
+ * A defensive spread, and four Pokémon one of which has it.
+ *
+ * The kind of spread is picked before the Pokémon is, the way every other mode
+ * picks its result first: only about one species in seven has an ability that
+ * bends its spread, so drawing one at random and then asking whether it has one
+ * would make the bent rows a curiosity rather than something you learn to watch
+ * for.
+ *
+ * The ability itself is deliberately not part of the question. Being told
+ * "Levitate" hands over the answer in a word; leaving it out makes the odd row
+ * the clue — something here is immune to Ground and none of the four is Flying,
+ * so which of them can hold the ability that does that? The result panel names
+ * it either way.
+ */
+function dexidQuestion(gens) {
+  const candidates = pool(gens);
+  const benders = Math.random() < ABILITY_CHANCE
+    ? candidates.filter((p) => bendersOf(p).length > 0)
+    : [];
+
+  const pokemon = pickFresh(benders.length > 0 ? benders : candidates, recent.dexid);
+  const ability = benders.length > 0 ? randomOf(bendersOf(pokemon)) : null;
+  const profile = defensiveProfile(pokemon, ability);
+
+  return {
+    mode: 'dexid',
+    pokemon,
+    ability,
+    profile,
+    options: shuffle([pokemon, ...pickDistractors(pokemon, profileKey(profile), candidates)]),
+    answer: pokemon.id,
+  };
+}
+
 /* --------------------------------------------------------------- questions */
 
 /**
@@ -182,6 +283,9 @@ export function nextQuestion(mode, all, gens) {
   }
   if (mode === 'master') {
     return masterQuestion(gens);
+  }
+  if (mode === 'dexid') {
+    return dexidQuestion(gens);
   }
 
   let pokemon = null;

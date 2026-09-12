@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Poké Ball icons, one per difficulty. Inline SVG rather than images: they are
+// Poké Ball icons, one per mode. Inline SVG rather than images: they are
 // two flat colours and a band, they inherit the page's ink, and they stay sharp
 // at the 20px the topbar uses and the 30px the mode cards use.
 //
@@ -54,6 +54,19 @@ const BALLS = {
         <circle cx="15" cy="14" r="5.5" fill="#f4f6fb"/>
         <circle cx="49" cy="14" r="5.5" fill="#f4f6fb"/>
         <path d="M23 29 26 7h5l3 7 3-7h5l3 22h-6l-1.5-11L32 25l-3.5-7L27 29Z" fill="#e05fa8"/>
+      </g>`,
+  },
+  timer: {
+    label: 'Timer Ball',
+    top: '#f4f6fb',
+    bottom: '#f4f6fb',
+    // Black shoulders down either side of a white dome, with two red bands
+    // across the middle of it — the clock face the item sprite reads as.
+    accents: `<g>
+        <rect x="0" y="0" width="13" height="30" fill="#2b2d36"/>
+        <rect x="51" y="0" width="13" height="30" fill="#2b2d36"/>
+        <rect x="13" y="8" width="38" height="5" fill="#e0352c"/>
+        <rect x="13" y="19" width="38" height="5" fill="#e0352c"/>
       </g>`,
   },
   premier: {

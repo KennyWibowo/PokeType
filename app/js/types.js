@@ -66,7 +66,14 @@ export function verdictOf(mult) {
   return 'neutral';
 }
 
-/** "4x", "0.25x", "1x" - trims the trailing zeros 0.5 and 0.25 would keep. */
+/**
+ * "4x", "0.25x", "1x" - trims the trailing zeros 0.5 and 0.25 would keep.
+ *
+ * Four decimals rather than two because an ability can land a multiplier on a
+ * value the chart alone never produces: Filter blunts a 2x hit to 1.5x, Dry
+ * Skin worsens a quarter-resisted Fire move to 0.3125x. All of them are dyadic
+ * fractions, so this stays exact rather than rounding the spread into a lie.
+ */
 export function formatMultiplier(mult) {
-  return `${Number(mult.toFixed(2))}×`;
+  return `${Number(mult.toFixed(4))}×`;
 }

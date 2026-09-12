@@ -2,12 +2,14 @@
 
 A quick drill for the Pokémon type chart, at
 [poketype.wibow.io](https://poketype.wibow.io). It shows an attacking type and
-something to hit with it; you say what happens. Six modes up a difficulty
-ladder, one streak counter, no timers.
+something to hit with it; you say what happens. Seven modes — five up a
+difficulty ladder and two that ask about typing itself — one streak counter, no
+timers.
 
 ## Modes
 
-A difficulty ladder, each rung marked with the ball it is named after.
+Five rungs of a difficulty ladder and two that come at typing from the other
+side, each marked with the ball it is named after.
 
 | | Mode | The question | What you have to know |
 |---|---|---|---|
@@ -17,6 +19,7 @@ A difficulty ladder, each rung marked with the ball it is named after.
 | Ultra | **Ultra** | **Flamethrower** hits **Bulbasaur** | The move's type *and* the Pokémon's, from memory |
 | Master | **Master** | **Scyther** at +4 Atk uses **X-Scissor** on **Typhlosion** | The whole damage formula |
 | Premier | **Type ID** | What type is **Bulbasaur**? | Pick its one or two types out of all 18 |
+| Timer | **Dex ID** | Which Pokémon takes 4× from Rock, 2× from Water and nothing from Ground? | A whole defensive spread, read backwards |
 
 Easy offers the four results a single type can produce. Medium, Hard and Ultra
 offer all six — 4×, 2×, 1×, ½×, ¼× and 0× — because two types multiply, and
@@ -24,8 +27,8 @@ because Hard and Ultra hide the typing, so a narrower list would leak the
 answer. After each one the result panel shows the arithmetic, e.g.
 `Fire → Grass 2× · Poison 1× = 2×`, so a wrong answer explains itself.
 
-Hard, Ultra, Master and Type ID draw from every generation by default; the pool
-selector on the home screen narrows them. Moves are cumulative up to the newest
+Hard, Ultra, Master, Type ID and Dex ID draw from every generation by default;
+the pool selector on the home screen narrows them. Moves are cumulative up to the newest
 generation you pick, since a player who knows gen III knows every move up to it.
 
 Moves whose type is not a property of the move are left out entirely — Hidden
@@ -56,15 +59,41 @@ EVs, neutral nature, the average damage roll, and no items, weather or screens.
 Abilities that depend on any of those — Guts, Chlorophyll, Sheer Force — are
 deliberately not modelled; `js/damage.js` says why next to the list.
 
+### Dex ID
+
+The type chart read backwards: the whole defensive spread is on screen — what
+hits for 4×, 2×, ½×, ¼× and nothing at all — and four Pokémon are offered, one
+of which has it.
+
+**Abilities count, and the ability is not shown.** About one spread in three has
+been bent by one: Levitate turns a Ground weakness into an immunity, Thick Fat
+halves Fire and Ice, Dry Skin absorbs Water and makes Fire *worse*, Solid Rock
+blunts a 4× hit to 3×, and Wonder Guard leaves only the super-effective rows
+standing. Naming the ability would hand over the answer, so the odd row is the
+clue instead: something here is immune to Ground and none of the four is Flying,
+so which of them can hold the ability that does that?
+
+The three wrong answers are checked against every ability *they* can have too,
+not just the chart — otherwise a Ground immunity would leave both a Flying type
+and a Levitate holder correct, and only one of them would score. The result
+panel names the ability and the rows it moved.
+
+Only abilities that key on the attacking type can appear in a spread. Fur Coat
+and Ice Scales key on the move's damage class and Multiscale halves everything
+alike, so none of them change what a spread says about any one type.
+`defensiveProfile` in `js/damage.js` says so next to the rules it does apply.
+
 Questions are not sampled uniformly. Random matchups pile up around "a third of
 a health bar", so Master picks a damage bracket first and searches for a matchup
-that lands in it. The slider is worth reading in full.
+that lands in it. The slider is worth reading in full. Dex ID does the same with
+abilities: only about one species in seven has one that bends its spread, so it
+picks whether this is an ability question before it picks the Pokémon.
 
 The streak counts correct answers in a row and resets on a miss. Your best
 streak per mode is kept in `localStorage`, which is per-browser and never
 leaves it.
 
-**Keyboard:** `1`–`4` answer, `Enter` moves to the next question, `Esc` goes
+**Keyboard:** `1`–`6` answer, `Enter` moves to the next question, `Esc` goes
 back to the mode list.
 
 ## How it is built
@@ -79,7 +108,7 @@ app/
   js/damage.js    the damage formula, stat stages and the modelled abilities
   js/data.js      the datasets, the generation filter, repeat-avoiding picks
   js/quiz.js      question generation per mode
-  js/balls.js     the six Poké Ball icons, as inline SVG
+  js/balls.js     the seven Poké Ball icons, as inline SVG
   js/app.js       state, rendering and input
   data/
     pokemon.json    1025 Pokémon — types, base stats, abilities
@@ -101,7 +130,7 @@ enough to be worth learning. Master does the same thing with damage brackets.
 
 ```bash
 docker compose up -d          # nginx serving app/ on the traefik proxy network
-docker compose run --rm test  # 37 logic tests, in node:22-alpine
+docker compose run --rm test  # 46 logic tests, in node:22-alpine
 python3 tools/build-dataset.py --sprites   # rebuild the Pokémon data
 ```
 

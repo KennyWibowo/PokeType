@@ -24,9 +24,14 @@ globalThis.fetch = async (path) => {
 const { TYPES, against, multiplier, verdictOf, formatMultiplier } = await import('../app/js/types.js');
 const { loadPokemon, loadMoves, loadLearnsets, pool, movePool, pickFresh, learnsetOf } =
   await import('../app/js/data.js');
-const { nextQuestion, sameTypes, gradeGuess, MODES, DUAL_TYPE_MULTIPLIERS, SINGLE_TYPE_MULTIPLIERS } =
-  await import('../app/js/quiz.js');
-const { calculate, statAt, boostMultiplier, LEVEL } = await import('../app/js/damage.js');
+const {
+  nextQuestion, sameTypes, gradeGuess, MODES, DEXID_OPTIONS,
+  DUAL_TYPE_MULTIPLIERS, SINGLE_TYPE_MULTIPLIERS,
+} = await import('../app/js/quiz.js');
+const {
+  calculate, statAt, boostMultiplier, LEVEL,
+  defensiveProfile, profileKey, profileAbilities, couldShowProfile,
+} = await import('../app/js/damage.js');
 const { pokeball, ballLabel } = await import('../app/js/balls.js');
 
 const all = await loadPokemon();
@@ -84,6 +89,11 @@ test('verdicts and formatting', () => {
   assert.equal(formatMultiplier(0.25), '0.25×');
   assert.equal(formatMultiplier(1), '1×');
   assert.equal(formatMultiplier(4), '4×');
+  // An ability can land a spread between the chart's own values, and a
+  // rounded multiplier there would be a wrong answer, not a tidier one.
+  assert.equal(formatMultiplier(1.5), '1.5×');
+  assert.equal(formatMultiplier(1.25), '1.25×');
+  assert.equal(formatMultiplier(0.3125), '0.3125×');
 });
 
 /* ----------------------------------------------------------------- dataset */
@@ -132,6 +142,22 @@ test('every mode produces a self-consistent question', () => {
       if (mode === 'typeid') {
         assert.ok(q.pokemon, 'typeid needs a Pokemon');
         assert.deepEqual(q.answer, q.pokemon.types);
+        continue;
+      }
+      if (mode === 'dexid') {
+        assert.ok(q.pokemon, 'dexid needs a Pokemon');
+        assert.equal(q.answer, q.pokemon.id);
+        assert.equal(q.options.length, DEXID_OPTIONS);
+        assert.equal(new Set(q.options.map((p) => p.id)).size, DEXID_OPTIONS, 'a repeated option');
+        assert.deepEqual(q.profile, defensiveProfile(q.pokemon, q.ability));
+        if (q.ability) assert.ok(q.pokemon.abilities.includes(q.ability), `${q.ability}?`);
+        // Exactly one of the four may be able to show this spread, and it has
+        // to be the answer. "Able" means under any ability it can have, since
+        // the one in play is not on screen - without that, a Ground immunity
+        // would leave a Levitate holder and a Flying type both correct.
+        const fits = q.options.filter((p) => couldShowProfile(p, profileKey(q.profile)));
+        assert.deepEqual(fits.map((p) => p.name), [q.pokemon.name],
+          `${fits.length} of the four fit ${q.pokemon.name}'s spread`);
         continue;
       }
       if (mode === 'master') {
@@ -401,6 +427,123 @@ test('Technician boosts weak moves only', () => {
 test('every Pokemon has at least one ability to draw', () => {
   for (const p of all) {
     assert.ok(p.abilities.length >= 1, `#${p.id} ${p.name} has no abilities`);
+  }
+});
+
+/* ------------------------------------------------------ defensive spreads */
+
+test('a spread is the type chart itself until an ability bends it', () => {
+  const charizard = byName('Charizard');           // Fire/Flying
+  const spread = defensiveProfile(charizard);
+  for (const t of TYPES) assert.equal(spread[t], multiplier(t, charizard.types), t);
+  assert.equal(spread.rock, 4);
+  assert.equal(spread.grass, 0.25);
+  assert.equal(spread.ground, 0);
+
+  // Blaze and Solar Power both key on things this quiz does not model, so
+  // neither moves a row and neither is ever drawn for the mode.
+  for (const ability of charizard.abilities) {
+    assert.deepEqual(defensiveProfile(charizard, ability), spread, ability);
+  }
+  assert.deepEqual(profileAbilities(charizard), []);
+});
+
+test('the abilities that bend a spread bend the rows they should', () => {
+  const bronzong = byName('Bronzong');             // Steel/Psychic
+  assert.equal(defensiveProfile(bronzong).ground, 2);
+  assert.equal(defensiveProfile(bronzong, 'Levitate').ground, 0);
+  assert.equal(defensiveProfile(bronzong, 'Heatproof').fire, 1);   // Steel takes 2x
+  assert.deepEqual(profileAbilities(bronzong).sort(), ['Heatproof', 'Levitate']);
+
+  const shedinja = byName('Shedinja');             // Bug/Ghost
+  const guarded = defensiveProfile(shedinja, 'Wonder Guard');
+  for (const t of TYPES) {
+    const chart = multiplier(t, shedinja.types);
+    assert.equal(guarded[t], chart > 1 ? chart : 0, `Wonder Guard vs ${t}`);
+  }
+
+  const snorlax = byName('Snorlax');
+  assert.equal(defensiveProfile(snorlax, 'Thick Fat').fire, 0.5);
+  assert.equal(defensiveProfile(snorlax, 'Thick Fat').ice, 0.5);
+  assert.equal(defensiveProfile(snorlax, 'Thick Fat').fighting, 2, 'Thick Fat is not a blanket');
+
+  // Dry Skin cuts both ways, and both halves have to show.
+  const paras = byName('Paras');                   // Bug/Grass, so Fire is 4x
+  const dry = defensiveProfile(paras, 'Dry Skin');
+  assert.equal(dry.water, 0);
+  assert.equal(dry.fire, 5);
+
+  // Solid Rock only touches what the chart made super effective - and Rhyperior
+  // is Ground, so Lightning Rod has nothing left to absorb and is not a bender.
+  const rhyperior = byName('Rhyperior');
+  const blunted = defensiveProfile(rhyperior, 'Solid Rock');
+  assert.equal(blunted.water, 3);                  // 4x, blunted by a quarter
+  assert.equal(blunted.ground, 1.5);               // 2x, likewise blunted
+  assert.equal(blunted.electric, 0);
+  assert.equal(blunted.psychic, 1, 'a neutral row must not move');
+  assert.ok(profileAbilities(rhyperior).includes('Solid Rock'));
+  assert.ok(!profileAbilities(rhyperior).includes('Lightning Rod'),
+    'Ground is already immune to Electric, so Lightning Rod changes nothing');
+});
+
+test('a spread says the same about each type as the damage formula does', () => {
+  // The strongest move of each type, so nothing rounds down to zero on its own.
+  const strongest = new Map(TYPES.map((t) => [t,
+    moves.filter((m) => m.type === t).sort((a, b) => b.power - a.power)[0]]));
+  const attacker = byName('Mew');
+  const cases = [
+    [byName('Bronzong'), 'Levitate'],
+    [byName('Shedinja'), 'Wonder Guard'],
+    [byName('Snorlax'), 'Thick Fat'],
+    [byName('Paras'), 'Dry Skin'],
+    [byName('Rhyperior'), 'Solid Rock'],
+    [byName('Necrozma'), 'Prism Armor'],
+  ];
+
+  for (const [defender, ability] of cases) {
+    const chart = defensiveProfile(defender);
+    const bent = defensiveProfile(defender, ability);
+    for (const type of TYPES) {
+      const move = strongest.get(type);
+      // Immunity is the only ability the attacker side of the pair can have
+      // without changing anything - it does nothing to a damaging move here.
+      const plain = calculate(attacker, move, defender, 0, { defender: 'Immunity' }).damage;
+      const withIt = calculate(attacker, move, defender, 0, { defender: ability }).damage;
+      const label = `${ability} vs ${move.name}`;
+      if (bent[type] === chart[type]) assert.equal(withIt, plain, label);
+      else if (bent[type] < chart[type]) assert.ok(withIt < plain, label);
+      else assert.ok(withIt > plain, label);
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ dex ID */
+
+test('dex ID hides the Pokemon and offers four to choose from', () => {
+  for (let i = 0; i < 200; i++) {
+    const q = nextQuestion('dexid', all, []);
+    assert.equal(q.mode, 'dexid');
+    assert.equal(Object.keys(q.profile).length, TYPES.length, 'every type needs a row');
+    assert.ok(q.options.some((p) => p.id === q.answer), 'the answer must be on offer');
+  }
+});
+
+test('dex ID mostly drills the chart, but bends a spread often enough to learn', () => {
+  // Only about one species in seven has an ability that moves a row, so a
+  // uniform draw would bend about 4% of spreads. The generator picks the kind
+  // of question first, the way Master picks a damage bracket first.
+  const runs = 400;
+  let bent = 0;
+  for (let i = 0; i < runs; i++) if (nextQuestion('dexid', all, []).ability) bent++;
+  assert.ok(bent > runs * 0.15, `an ability bent only ${bent} of ${runs} spreads`);
+  assert.ok(bent < runs * 0.45, `an ability bent ${bent} of ${runs} spreads`);
+});
+
+test('dex ID respects the generation filter, answer and distractors alike', () => {
+  for (let i = 0; i < 150; i++) {
+    const q = nextQuestion('dexid', all, [1]);
+    assert.equal(q.pokemon.gen, 1);
+    for (const option of q.options) assert.equal(option.gen, 1, option.name);
   }
 });
 
